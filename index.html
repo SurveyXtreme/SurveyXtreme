@@ -423,13 +423,23 @@
         // ==========================================
         // CONFIG & STRICT INITIALIZATION
         // ==========================================
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-            apiKey: "demo-key", projectId: "demo-project", appId: "demo-app"
+        
+        // 👇 REPLACE THIS BLOCK WITH YOUR OWN FIREBASE CONFIG 👇
+        const myCustomFirebaseConfig = {
+            apiKey: "AIzaSyAu8BGDjj7Q94gI7KkOIPsg_81utm88-ec",
+            authDomain: "surveyxtreme1.firebaseapp.com",
+            projectId: "surveyxtreme1",
+            storageBucket: "surveyxtreme1.firebasestorage.app",
+            messagingSenderId: "931096015024",
+            appId: "1:931096015024:web:354b12d9f7bb84091fcb75"
         };
+
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : myCustomFirebaseConfig;
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'survey-extreme-app';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : (myCustomFirebaseConfig.projectId || 'survey-extreme-app');
+        // 👆 ============================================== 👆
 
         // Survey Database
         const INTERNAL_SURVEYS = [
@@ -692,7 +702,23 @@
                     await signInAnonymously(auth);
                 }
             } catch (err) {
-                console.error("Auth init failed:", err);
+                console.error("Auth init failed. Missing Firebase Config:", err);
+                const loadingView = document.getElementById('view-loading');
+                loadingView.innerHTML = `
+                    <div class="glass-panel p-8 rounded-2xl max-w-md text-center border border-red-500/50 shadow-[0_0_30px_rgba(239,68,68,0.2)]">
+                        <h2 class="text-2xl font-bold text-red-400 mb-4">⚠️ Database Connection Failed</h2>
+                        <p class="text-gray-300 mb-4 text-sm">To run this app on GitHub Pages, you need to connect your own free database.</p>
+                        <div class="text-left text-xs text-gray-400 bg-black/50 p-4 rounded-lg">
+                            <strong>How to fix:</strong><br/><br/>
+                            1. Go to <a href="https://console.firebase.google.com/" target="_blank" class="text-cyan-400 underline">Firebase Console</a><br/>
+                            2. Create a free project<br/>
+                            3. Go to "Project Settings" and register a web app<br/>
+                            4. Copy your project's configuration keys<br/>
+                            5. Open this HTML file and replace the <code>myCustomFirebaseConfig</code> placeholder with your actual keys.
+                        </div>
+                    </div>
+                `;
+                return; // Stop the app from trying to load further
             }
 
             onAuthStateChanged(auth, handleAuthStateChanged);
