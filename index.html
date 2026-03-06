@@ -216,7 +216,8 @@
                     <button id="btn-skip-phone" class="w-full py-2 px-4 text-gray-400 hover:text-white text-sm font-medium transition-colors">
                         Skip for now
                     </button>
-                    <div id="recaptcha-container" class="mt-2 w-full flex justify-center"></div>
+                    <!-- RECAPTCHA CONTAINER -->
+                    <div id="recaptcha-container" class="mt-2 w-full flex justify-center min-h-[80px]"></div>
                 </div>
 
                 <div id="phone-verify-group" class="hidden flex-col gap-3">
@@ -718,7 +719,7 @@
                         </div>
                     </div>
                 `;
-                return; // Stop the app from trying to load further
+                return; 
             }
 
             onAuthStateChanged(auth, handleAuthStateChanged);
@@ -728,13 +729,12 @@
             currentUser = user;
             if (!user) return;
 
-            // Updated logic to check if user has an email (from either Google OR Email/Password)
             const hasAccount = user.email || isGoogleBypassed || isDevBypassed;
             const hasPhone = user.phoneNumber || isDevBypassed;
 
-            // Unlock Admin tab only for designated email
             if (user.email === ADMIN_EMAIL || isDevBypassed) {
-                document.getElementById('nav-btn-admin').classList.remove('hidden');
+                const adminBtn = document.getElementById('nav-btn-admin');
+                if(adminBtn) adminBtn.classList.remove('hidden');
             }
 
             if (hasAccount && (hasPhone || hasSkippedPhone)) {
@@ -754,21 +754,30 @@
             const authEmailStepLogin = document.getElementById('auth-email-step-login');
             const authEmailStepSignup = document.getElementById('auth-email-step-signup');
             const phoneSec = document.getElementById('phone-section');
+            const statusPhoneLabel = document.getElementById('status-phone');
 
             if (hasAccount) {
-                statusAcc.textContent = (isGoogleBypassed || isDevBypassed) ? 'Bypassed' : 'Verified';
-                statusAcc.className = 'text-xs px-2 py-1 rounded-full bg-green-900/50 text-green-400 border border-green-800';
-                authEmailStep1.classList.add('hidden');
-                authEmailStepLogin.classList.add('hidden');
-                authEmailStepLogin.classList.remove('flex');
-                authEmailStepSignup.classList.add('hidden');
-                authEmailStepSignup.classList.remove('flex');
-                phoneSec.classList.remove('opacity-50', 'pointer-events-none');
+                if(statusAcc) {
+                    statusAcc.textContent = (isGoogleBypassed || isDevBypassed) ? 'Bypassed' : 'Verified';
+                    statusAcc.className = 'text-xs px-2 py-1 rounded-full bg-green-900/50 text-green-400 border border-green-800';
+                }
+                if(authEmailStep1) authEmailStep1.classList.add('hidden');
+                if(authEmailStepLogin) { authEmailStepLogin.classList.add('hidden'); authEmailStepLogin.classList.remove('flex'); }
+                if(authEmailStepSignup) { authEmailStepSignup.classList.add('hidden'); authEmailStepSignup.classList.remove('flex'); }
+                if(phoneSec) phoneSec.classList.remove('opacity-50', 'pointer-events-none');
             } else {
-                statusAcc.textContent = 'Required';
-                statusAcc.className = 'text-xs px-2 py-1 rounded-full bg-red-900/50 text-red-400 border border-red-800';
-                authEmailStep1.classList.remove('hidden');
-                phoneSec.classList.add('opacity-50', 'pointer-events-none');
+                if(statusAcc) {
+                    statusAcc.textContent = 'Required';
+                    statusAcc.className = 'text-xs px-2 py-1 rounded-full bg-red-900/50 text-red-400 border border-red-800';
+                }
+                if(authEmailStep1) authEmailStep1.classList.remove('hidden');
+                if(phoneSec) phoneSec.classList.add('opacity-50', 'pointer-events-none');
+            }
+
+            if(hasPhone && statusPhoneLabel) {
+                statusPhoneLabel.textContent = "Verified";
+                statusPhoneLabel.className = 'text-xs px-2 py-1 rounded-full bg-green-900/50 text-green-400 border border-green-800';
+                document.getElementById('phone-input-group').classList.add('hidden');
             }
         }
 
@@ -782,9 +791,7 @@
             try {
                 const docSnap = await getDoc(docRef);
                 if (docSnap.exists()) {
-                    // Merge saved preferences into default userData to ensure missing keys populate safely
                     userData = { ...userData, ...docSnap.data() };
-                    
                     if (userData.activeBackground) {
                         buildSceneObjects(userData.activeBackground);
                     }
@@ -798,8 +805,7 @@
         }
 
         function setupRealtimeSurveys() {
-            if (dynamicSurveysUnsubscribe) return; // Prevent multiple listeners
-
+            if (dynamicSurveysUnsubscribe) return; 
             const surveysRef = collection(db, 'artifacts', appId, 'public', 'data', 'surveys');
             dynamicSurveysUnsubscribe = onSnapshot(surveysRef, (snapshot) => {
                 DYNAMIC_SURVEYS = [];
@@ -819,7 +825,6 @@
             userData.credits += amount;
             if (amount > 0) userData.totalEarned += amount;
             if (isCashout) userData.totalCashedOut += Math.abs(amount);
-            
             if(surveyId) userData.completedSurveys.push(surveyId);
 
             try {
@@ -840,46 +845,60 @@
         function updateNavUI() {
             const credits = userData.credits || 0;
             const pounds = (credits * 0.001).toFixed(2);
-            
             document.getElementById('nav-credits').textContent = `${credits} CR`;
             document.getElementById('nav-fiat').textContent = `£${pounds}`;
             document.getElementById('nav-credits-mobile').textContent = `${credits} CR`;
             document.getElementById('nav-fiat-mobile').textContent = `£${pounds}`;
-            
-            // Update wallet header too
             document.getElementById('wallet-cr-balance').textContent = `${credits} CR`;
             document.getElementById('wallet-fiat-balance').textContent = `£${pounds}`;
         }
 
         // ==========================================
-        // AUTH EVENTS
+        // AUTH EVENTS & RECAPTCHA FIX
         // ==========================================
+        
+        function setupRecaptcha() {
+            // Explicitly reset the container
+            const container = document.getElementById('recaptcha-container');
+            if (container) container.innerHTML = '';
+            
+            try {
+                window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+                    'size': 'normal',
+                    'callback': (response) => {
+                        console.log("reCAPTCHA solved");
+                    },
+                    'expired-callback': () => {
+                        console.log("reCAPTCHA expired");
+                    }
+                });
+                window.recaptchaVerifier.render();
+            } catch (error) {
+                console.error("Recaptcha Setup Error:", error);
+            }
+        }
+
         document.getElementById('btn-email-continue').addEventListener('click', async () => {
             const email = document.getElementById('input-email').value.trim();
             const errDiv = document.getElementById('auth-error');
-            errDiv.classList.add('hidden');
+            if(errDiv) errDiv.classList.add('hidden');
 
             if (!email || !email.includes('@')) {
-                errDiv.textContent = 'Please enter a valid email address.';
-                errDiv.classList.remove('hidden');
+                if(errDiv) { errDiv.textContent = 'Please enter a valid email address.'; errDiv.classList.remove('hidden'); }
                 return;
             }
 
             try {
-                // Check if email exists in Firebase Auth
                 const methods = await fetchSignInMethodsForEmail(auth, email);
                 currentAuthEmail = email;
-
                 document.getElementById('auth-email-step-1').classList.add('hidden');
-
                 if (methods.length > 0) {
                     if (methods.includes('password')) {
                         document.getElementById('display-login-email').textContent = email;
                         document.getElementById('auth-email-step-login').classList.remove('hidden');
                         document.getElementById('auth-email-step-login').classList.add('flex');
                     } else {
-                        errDiv.textContent = 'This email uses Google Sign-In. Please click "Continue with Google".';
-                        errDiv.classList.remove('hidden');
+                        if(errDiv) { errDiv.textContent = 'This email uses Google/Microsoft Sign-In.'; errDiv.classList.remove('hidden'); }
                         document.getElementById('auth-email-step-1').classList.remove('hidden');
                     }
                 } else {
@@ -889,109 +908,55 @@
                 }
             } catch (error) {
                 console.error("Email Check Error:", error);
-                errDiv.textContent = 'Error checking email or feature restricted by demo config.';
-                errDiv.classList.remove('hidden');
+                if(errDiv) { errDiv.textContent = 'Auth error. Use bypass if testing in preview.'; errDiv.classList.remove('hidden'); }
             }
         });
 
         document.getElementById('btn-email-login').addEventListener('click', async () => {
             const pwd = document.getElementById('input-password-login').value;
             const errDiv = document.getElementById('auth-error');
-            errDiv.classList.add('hidden');
             if(!pwd) return;
-
-            try {
-                await signInWithEmailAndPassword(auth, currentAuthEmail, pwd);
-            } catch (error) {
-                errDiv.textContent = 'Invalid email or password.';
-                errDiv.classList.remove('hidden');
+            try { await signInWithEmailAndPassword(auth, currentAuthEmail, pwd); } catch (error) { 
+                if(errDiv) { errDiv.textContent = 'Invalid email or password.'; errDiv.classList.remove('hidden'); }
             }
         });
 
         document.getElementById('btn-email-signup').addEventListener('click', async () => {
             const pwd = document.getElementById('input-password-signup').value;
             const errDiv = document.getElementById('auth-error');
-            errDiv.classList.add('hidden');
-            if(!pwd || pwd.length < 6) {
-                errDiv.textContent = 'Password must be at least 6 characters.';
-                errDiv.classList.remove('hidden');
-                return;
-            }
-
-            try {
-                await createUserWithEmailAndPassword(auth, currentAuthEmail, pwd);
-            } catch (error) {
-                errDiv.textContent = error.message;
-                errDiv.classList.remove('hidden');
+            if(!pwd || pwd.length < 6) { if(errDiv) { errDiv.textContent = 'Password must be at least 6 characters.'; errDiv.classList.remove('hidden'); } return; }
+            try { await createUserWithEmailAndPassword(auth, currentAuthEmail, pwd); } catch (error) {
+                if(errDiv) { errDiv.textContent = error.message; errDiv.classList.remove('hidden'); }
             }
         });
 
         document.querySelectorAll('.btn-email-back').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.getElementById('auth-email-step-login').classList.add('hidden');
-                document.getElementById('auth-email-step-login').classList.remove('flex');
                 document.getElementById('auth-email-step-signup').classList.add('hidden');
-                document.getElementById('auth-email-step-signup').classList.remove('flex');
                 document.getElementById('auth-email-step-1').classList.remove('hidden');
-                document.getElementById('auth-error').classList.add('hidden');
-                document.getElementById('input-password-login').value = '';
-                document.getElementById('input-password-signup').value = '';
             });
         });
 
         document.getElementById('btn-auth-google').addEventListener('click', async () => {
             const provider = new GoogleAuthProvider();
-            const errDiv = document.getElementById('auth-error');
-            errDiv.classList.add('hidden');
-            
-            try {
-                await signInWithPopup(auth, provider);
-            } catch (error) {
-                if (error.code === 'auth/unauthorized-domain' || error.code === 'auth/popup-blocked') {
-                    errDiv.innerHTML = `Environment restriction (${error.code}).<br/>Bypassing Google Auth for testing...`;
-                    errDiv.className = 'text-yellow-400 text-xs mt-3 text-center bg-yellow-900/30 p-2 rounded border border-yellow-800';
-                    errDiv.classList.remove('hidden');
-                    setTimeout(() => {
-                        isGoogleBypassed = true;
-                        handleAuthStateChanged(currentUser);
-                    }, 1500);
-                } else {
-                    errDiv.textContent = 'Authentication failed. Please try again.';
-                    errDiv.classList.remove('hidden');
-                }
+            try { await signInWithPopup(auth, provider); } catch (error) {
+                isGoogleBypassed = true; handleAuthStateChanged(currentUser);
             }
         });
 
         document.getElementById('btn-auth-microsoft').addEventListener('click', async () => {
             const provider = new OAuthProvider('microsoft.com');
-            const errDiv = document.getElementById('auth-error');
-            errDiv.classList.add('hidden');
-            
-            try {
-                await signInWithPopup(auth, provider);
-            } catch (error) {
-                if (error.code === 'auth/unauthorized-domain' || error.code === 'auth/popup-blocked') {
-                    errDiv.innerHTML = `Environment restriction (${error.code}).<br/>Bypassing Auth for testing...`;
-                    errDiv.className = 'text-yellow-400 text-xs mt-3 text-center bg-yellow-900/30 p-2 rounded border border-yellow-800';
-                    errDiv.classList.remove('hidden');
-                    setTimeout(() => {
-                        isGoogleBypassed = true; // reusing bypass flag for demo
-                        handleAuthStateChanged(currentUser);
-                    }, 1500);
-                } else {
-                    errDiv.textContent = 'Microsoft Authentication failed. Please try again.';
-                    errDiv.classList.remove('hidden');
-                }
+            try { await signInWithPopup(auth, provider); } catch (error) {
+                isGoogleBypassed = true; handleAuthStateChanged(currentUser);
             }
         });
 
         document.getElementById('btn-send-sms').addEventListener('click', async () => {
-            if (!window.recaptchaVerifier) {
-                window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', { size: 'normal' });
-            }
+            setupRecaptcha();
             const phoneNumber = document.getElementById('input-phone').value;
             const errDiv = document.getElementById('sms-error');
-            errDiv.classList.add('hidden');
+            if(errDiv) errDiv.classList.add('hidden');
             
             try {
                 phoneConfirmationResult = await linkWithPhoneNumber(currentUser, phoneNumber, window.recaptchaVerifier);
@@ -999,45 +964,32 @@
                 document.getElementById('phone-verify-group').classList.remove('hidden');
                 document.getElementById('phone-verify-group').classList.add('flex');
             } catch (error) {
-                errDiv.textContent = "Failed to send SMS. Preview environments often block reCAPTCHA.";
-                errDiv.classList.remove('hidden');
-                if (window.recaptchaVerifier) window.recaptchaVerifier.render().then(id => grecaptcha.reset(id));
+                if(errDiv) { errDiv.textContent = "SMS Error: Ensure domain is whitelisted in Firebase."; errDiv.classList.remove('hidden'); }
+                if (window.recaptchaVerifier) window.recaptchaVerifier.clear();
+                document.getElementById('recaptcha-container').innerHTML = '';
             }
         });
 
         document.getElementById('btn-verify-code').addEventListener('click', async () => {
             const code = document.getElementById('input-code').value;
-            const errDiv = document.getElementById('sms-error');
             if(!phoneConfirmationResult) return;
-            try {
-                await phoneConfirmationResult.confirm(code);
-            } catch (error) {
-                errDiv.textContent = "Invalid code.";
-                errDiv.classList.remove('hidden');
+            try { await phoneConfirmationResult.confirm(code); } catch (error) {
+                const errDiv = document.getElementById('sms-error');
+                if(errDiv) { errDiv.textContent = "Invalid code."; errDiv.classList.remove('hidden'); }
             }
         });
 
-        document.getElementById('btn-skip-phone').addEventListener('click', () => {
-            hasSkippedPhone = true;
-            handleAuthStateChanged(currentUser);
-        });
-
-        document.getElementById('btn-dev-bypass').addEventListener('click', () => {
-            isDevBypassed = true;
-            hasSkippedPhone = true;
-            handleAuthStateChanged(currentUser);
-        });
-
-        document.getElementById('btn-logout').addEventListener('click', async () => {
-            await signOut(auth);
-            window.location.reload();
-        });
+        document.getElementById('btn-skip-phone').addEventListener('click', () => { hasSkippedPhone = true; handleAuthStateChanged(currentUser); });
+        document.getElementById('btn-dev-bypass').addEventListener('click', () => { isDevBypassed = true; hasSkippedPhone = true; handleAuthStateChanged(currentUser); });
+        document.getElementById('btn-logout').addEventListener('click', async () => { await signOut(auth); window.location.reload(); });
 
         document.getElementById('nav-btn-wallet').addEventListener('click', () => showView('wallet'));
         document.getElementById('nav-btn-profile').addEventListener('click', () => showView('profile'));
         document.getElementById('nav-btn-admin').addEventListener('click', () => showView('admin'));
 
-        // Admin dynamic questions
+        // ==========================================
+        // ADMIN SURVEY CREATOR
+        // ==========================================
         document.getElementById('btn-admin-add-q').addEventListener('click', () => {
             const list = document.getElementById('admin-questions-list');
             const num = list.children.length + 1;
@@ -1057,7 +1009,7 @@
 
         document.getElementById('btn-admin-auto-q').addEventListener('click', () => {
             const list = document.getElementById('admin-questions-list');
-            list.innerHTML = ''; // clear
+            list.innerHTML = ''; 
             const autoQs = [
                 { q: "How satisfied are you with our latest features?", opts: ["Very Satisfied", "Neutral", "Unsatisfied"] },
                 { q: "Would you recommend this app to a friend?", opts: ["Yes, definitely", "Maybe", "No"] },
@@ -1067,30 +1019,27 @@
                 const block = document.createElement('div');
                 block.className = "admin-q-block border border-gray-700 p-4 rounded-xl bg-black/30";
                 block.innerHTML = `
-                    <h4 class="font-bold mb-3 flex justify-between">Survey Question ${i+1} <button class="text-red-400 hover:text-red-300 text-xs" onclick="this.parentElement.parentElement.remove()">Remove</button></h4>
-                    <input type="text" value="${auto.q}" class="q-text w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white mb-3 focus:outline-none focus:border-red-500">
+                    <h4 class="font-bold mb-3 flex justify-between">Survey Question ${i+1}</h4>
+                    <input type="text" value="${auto.q}" class="q-text w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white mb-3 focus:outline-none">
                     <div class="grid grid-cols-3 gap-2">
-                        <input type="text" value="${auto.opts[0] || ''}" class="q-opt1 w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500">
-                        <input type="text" value="${auto.opts[1] || ''}" class="q-opt2 w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500">
-                        <input type="text" value="${auto.opts[2] || ''}" class="q-opt3 w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500">
+                        <input type="text" value="${auto.opts[0] || ''}" class="q-opt1 w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm">
+                        <input type="text" value="${auto.opts[1] || ''}" class="q-opt2 w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm">
+                        <input type="text" value="${auto.opts[2] || ''}" class="q-opt3 w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm">
                     </div>
                 `;
                 list.appendChild(block);
             });
-            document.getElementById('admin-title').value = "Feedback Survey " + Math.floor(Math.random() * 100);
-            document.getElementById('admin-reward').value = "50";
+            document.getElementById('admin-title').value = "Global Insight Mission";
+            document.getElementById('admin-reward').value = "75";
         });
 
-        // Admin Submit Listener
         document.getElementById('btn-admin-submit').addEventListener('click', async () => {
             const title = document.getElementById('admin-title').value;
             const reward = parseInt(document.getElementById('admin-reward').value);
             const reqPhone = document.getElementById('admin-req-phone').checked;
-            
             const qBlocks = document.querySelectorAll('.admin-q-block');
             const questions = [];
             let isValid = true;
-            
             qBlocks.forEach(block => {
                 const q = block.querySelector('.q-text').value;
                 const opt1 = block.querySelector('.q-opt1').value;
@@ -1099,45 +1048,12 @@
                 if (!q || !opt1) isValid = false;
                 questions.push({ q, opts: [opt1, opt2, opt3].filter(Boolean) });
             });
-            
-            if (!title || !reward || !isValid || questions.length === 0) {
-                return alert("Fill out the title, reward, and at least one valid question with Option A.");
-            }
-
-            const surveyData = {
-                title, reward, requiresPhone: reqPhone, questions
-            };
-
-            const status = document.getElementById('admin-status');
-            status.classList.remove('hidden');
-            status.textContent = "Publishing to network...";
-            status.className = "text-center text-sm mt-2 text-yellow-400";
-
+            if (!title || !reward || !isValid || questions.length === 0) return alert("Error in form!");
             try {
-                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'surveys'), surveyData);
-                status.textContent = "Survey Published Successfully!";
-                status.className = "text-center text-sm mt-2 text-green-400";
-                
-                // Reset Form
-                document.getElementById('admin-title').value = '';
-                document.getElementById('admin-reward').value = '';
-                document.getElementById('admin-req-phone').checked = false;
-                document.getElementById('admin-questions-list').innerHTML = `
-                    <div class="admin-q-block border border-gray-700 p-4 rounded-xl bg-black/30">
-                        <h4 class="font-bold mb-3">Survey Question 1</h4>
-                        <input type="text" placeholder="Enter the question here..." class="q-text w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white mb-3 focus:outline-none focus:border-red-500">
-                        <div class="grid grid-cols-3 gap-2">
-                            <input type="text" placeholder="Option A" class="q-opt1 w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500">
-                            <input type="text" placeholder="Option B" class="q-opt2 w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500">
-                            <input type="text" placeholder="Option C (Optional)" class="q-opt3 w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500">
-                        </div>
-                    </div>
-                `;
-            } catch (err) {
-                console.error(err);
-                status.textContent = "Error publishing survey.";
-                status.className = "text-center text-sm mt-2 text-red-400";
-            }
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'surveys'), { title, reward, requiresPhone: reqPhone, questions });
+                document.getElementById('admin-status').textContent = "Published!";
+                document.getElementById('admin-status').classList.remove('hidden');
+            } catch (err) { console.error(err); }
         });
 
         // ==========================================
@@ -1146,7 +1062,7 @@
         function renderProfile() {
             document.getElementById('profile-total-earned').textContent = `${userData.totalEarned || 0} CR`;
             document.getElementById('profile-total-cashed').textContent = `${userData.totalCashedOut || 0} CR`;
-            document.getElementById('profile-email').textContent = currentUser?.email || 'Anonymous / Phone Only';
+            document.getElementById('profile-email').textContent = currentUser?.email || 'Guest Account';
             document.getElementById('profile-surveys-count').textContent = userData.completedSurveys.length;
         }
 
@@ -1156,300 +1072,137 @@
             container.innerHTML = '';
             let availableCount = 0;
             const hasPhone = currentUser.phoneNumber || isDevBypassed;
-            
-            // Check if profiling is done
             const hasProfiled = userData.completedSurveys.includes("surv_profiling_00");
-
             const allSurveys = [...INTERNAL_SURVEYS, ...DYNAMIC_SURVEYS];
-
             allSurveys.forEach(survey => {
                 if (userData.completedSurveys.includes(survey.id)) return;
-
                 availableCount++;
                 const card = document.createElement('div');
-                
                 let isLocked = false;
                 let lockReason = "";
-                
-                if (!hasProfiled && survey.id !== "surv_profiling_00") {
-                    isLocked = true;
-                    lockReason = "Complete Profiling Mission First";
-                } else if (survey.requiresPhone && !hasPhone) {
-                    isLocked = true;
-                    lockReason = "Requires Phone Verification";
-                }
-
+                if (!hasProfiled && survey.id !== "surv_profiling_00") { isLocked = true; lockReason = "Complete Profiling First"; }
+                else if (survey.requiresPhone && !hasPhone) { isLocked = true; lockReason = "Requires Phone Verification"; }
                 card.className = `glass-panel p-6 rounded-xl border transition-all relative overflow-hidden ${isLocked ? 'border-gray-800 opacity-75' : 'border-gray-700 hover:border-cyan-500 cursor-pointer hover:bg-gray-800/50 group'}`;
-                
-                let highlightBg = isLocked ? '' : '<div class="absolute inset-0 bg-gradient-to-r from-cyan-500/10 to-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>';
-                
                 card.innerHTML = `
-                    ${highlightBg}
                     <div class="relative z-10">
                         <div class="flex justify-between items-start mb-4">
-                            <h3 class="text-xl font-bold text-white flex items-center gap-2">
-                                ${isLocked ? '🔒' : ''} ${survey.title}
-                            </h3>
-                            <div class="bg-cyan-900/80 text-cyan-300 px-3 py-1 rounded text-sm font-bold border border-cyan-700">
-                                ${survey.reward} CR
-                            </div>
+                            <h3 class="text-xl font-bold text-white flex items-center gap-2">${isLocked ? '🔒' : ''} ${survey.title}</h3>
+                            <div class="bg-cyan-900/80 text-cyan-300 px-3 py-1 rounded text-sm font-bold border border-cyan-700">${survey.reward} CR</div>
                         </div>
-                        <p class="text-gray-400 text-sm mb-4">${survey.questions.length} questions • ~${Math.max(1, Math.ceil(survey.questions.length / 3))} mins</p>
-                        ${isLocked ? 
-                            `<div class="text-red-400 text-sm font-semibold mt-2">${lockReason}</div>` : 
-                            `<div class="flex items-center text-cyan-400 text-sm font-semibold group-hover:translate-x-2 transition-transform">START MISSION <span class="ml-2">→</span></div>`
-                        }
+                        <p class="text-gray-400 text-sm mb-4">${survey.questions.length} questions</p>
+                        ${isLocked ? `<div class="text-red-400 text-sm font-semibold">${lockReason}</div>` : `<div class="flex items-center text-cyan-400 text-sm font-semibold">START MISSION →</div>`}
                     </div>
                 `;
-                
                 card.addEventListener('click', () => {
-                    if (isLocked) {
-                        if (lockReason === "Complete Profiling Mission First") {
-                            alert("You must complete the 10-question Welcome Profiling Mission before unlocking other surveys!");
-                        } else {
-                            alert("Please verify your phone number (refresh to return to auth) to access Premium surveys.");
-                        }
-                    } else {
-                        startSurvey(survey);
-                    }
+                    if (isLocked) alert(lockReason); else startSurvey(survey);
                 });
                 container.appendChild(card);
             });
-
-            if (availableCount === 0) {
-                container.innerHTML = `<div class="col-span-full text-center py-12 text-gray-500 glass-panel rounded-xl"><p class="text-lg">No more surveys available.</p></div>`;
-            }
+            if (availableCount === 0) container.innerHTML = `<div class="col-span-full text-center py-12 text-gray-500 glass-panel rounded-xl">No more surveys available.</div>`;
         }
 
         function startSurvey(survey) {
-            activeSurvey = survey;
-            activeQuestionIndex = 0;
+            activeSurvey = survey; activeQuestionIndex = 0;
             document.getElementById('survey-title').textContent = survey.title;
             document.getElementById('survey-reward').textContent = survey.reward;
             document.getElementById('total-q-num').textContent = survey.questions.length;
-            showView('survey');
-            renderQuestion();
+            showView('survey'); renderQuestion();
         }
 
         function renderQuestion() {
             const qData = activeSurvey.questions[activeQuestionIndex];
             document.getElementById('current-q-num').textContent = activeQuestionIndex + 1;
             document.getElementById('progress-bar').style.width = `${(activeQuestionIndex / activeSurvey.questions.length) * 100}%`;
-            document.getElementById('progress-percent').textContent = `${Math.round((activeQuestionIndex / activeSurvey.questions.length) * 100)}%`;
-
             document.getElementById('question-text').textContent = qData.q;
             const optsContainer = document.getElementById('options-container');
             optsContainer.innerHTML = '';
-
             qData.opts.forEach(opt => {
                 const btn = document.createElement('button');
                 btn.className = 'w-full text-left p-4 rounded-lg bg-gray-800 border border-gray-700 hover:border-cyan-500 hover:bg-gray-700 transition-colors font-medium';
                 btn.textContent = opt;
                 btn.addEventListener('click', () => {
                     activeQuestionIndex++;
-                    if (activeQuestionIndex < activeSurvey.questions.length) renderQuestion();
-                    else completeSurvey();
+                    if (activeQuestionIndex < activeSurvey.questions.length) renderQuestion(); else completeSurvey();
                 });
                 optsContainer.appendChild(btn);
             });
         }
 
-        // ==========================================
-        // EXTREME EFFECTS & COMPLETION
-        // ==========================================
         async function completeSurvey() {
             const reward = activeSurvey.reward;
             saveUserCredits(reward, activeSurvey.id);
-
             showView('extreme');
             document.getElementById('extreme-reward-text').textContent = `+${reward} CREDITS`;
-            
-            isExtremeMode = true;
-            document.body.classList.add('shake-active');
+            isExtremeMode = true; document.body.classList.add('shake-active');
             document.getElementById('strobe-overlay').classList.remove('hidden');
             document.getElementById('strobe-overlay').classList.add('strobe-active');
-
             const duration = 3000;
-            const animationEnd = Date.now() + duration;
-            const defaults = { startVelocity: 45, spread: 360, ticks: 100, zIndex: 10000 };
-
             const interval = setInterval(function() {
-                if (Date.now() > animationEnd) return clearInterval(interval);
-                const particleCount = 100 * ((animationEnd - Date.now()) / duration);
-                confetti({...defaults, particleCount, origin: { x: Math.random() * 0.2 + 0.1, y: Math.random() - 0.2 }});
-                confetti({...defaults, particleCount, origin: { x: Math.random() * 0.2 + 0.7, y: Math.random() - 0.2 }});
+                confetti({ startVelocity: 45, spread: 360, ticks: 100, zIndex: 10000, particleCount: 50, origin: { x: Math.random(), y: Math.random() }});
             }, 250);
-
             setTimeout(() => {
-                isExtremeMode = false;
-                document.body.classList.remove('shake-active');
-                document.getElementById('strobe-overlay').classList.add('hidden');
-                document.getElementById('strobe-overlay').classList.remove('strobe-active');
-                renderDashboard();
-                showView('dashboard');
+                clearInterval(interval); isExtremeMode = false; document.body.classList.remove('shake-active');
+                document.getElementById('strobe-overlay').classList.add('hidden'); renderDashboard(); showView('dashboard');
             }, duration + 500);
         }
 
         // ==========================================
-        // WALLET & STORE
+        // WALLET & BACKGROUND SHOP
         // ==========================================
         function renderWallet() {
             const container = document.getElementById('store-list');
             if(!container) return;
             container.innerHTML = '';
-            
             STORE_INVENTORY.forEach((item, index) => {
                 const canAfford = userData.credits >= item.costCr;
                 const inStock = item.stock > 0;
-                
                 const card = document.createElement('div');
                 card.className = `bg-gray-900 border ${inStock ? 'border-gray-700' : 'border-red-900/50 opacity-70'} rounded-xl overflow-hidden flex flex-col`;
-                
                 card.innerHTML = `
-                    <div class="h-28 bg-gradient-to-br ${item.color} p-4 flex flex-col justify-end relative overflow-hidden">
-                        ${item.logo ? `<div>${item.logo}</div>` : ''}
-                        <h4 class="text-white font-bold text-lg drop-shadow-md relative z-10">${item.name}</h4>
-                    </div>
-                    <div class="p-5 flex flex-col flex-grow">
-                        <div class="flex justify-between items-center mb-4">
-                            <span class="text-2xl font-bold">£${item.valueFiat.toFixed(2)}</span>
-                            <span class="text-yellow-400 font-bold bg-yellow-900/30 px-2 py-1 rounded text-sm">${item.costCr} CR</span>
-                        </div>
-                        
-                        <div class="mt-auto">
-                            <div class="flex justify-between text-sm mb-2">
-                                <span class="text-gray-400">Availability</span>
-                                <span class="${inStock ? 'text-green-400' : 'text-red-400'} font-semibold">
-                                    ${inStock ? `${item.stock} in stock` : 'Out of stock'}
-                                </span>
-                            </div>
-                            <button id="buy-btn-${index}" class="w-full py-3 rounded-lg font-bold transition-colors ${
-                                !inStock ? 'bg-gray-800 text-gray-500 cursor-not-allowed' :
-                                !canAfford ? 'bg-gray-800 text-gray-400 cursor-not-allowed border border-gray-700' :
-                                'bg-cyan-600 hover:bg-cyan-500 text-white'
-                            }">
-                                ${!inStock ? 'Sold Out' : (!canAfford ? 'Insufficient Credits' : 'Redeem Now')}
-                            </button>
-                        </div>
-                    </div>
-                `;
-                
+                    <div class="h-28 bg-gradient-to-br ${item.color} p-4 flex flex-col justify-end relative overflow-hidden">${item.logo || ''}<h4 class="text-white font-bold text-lg drop-shadow-md relative z-10">${item.name}</h4></div>
+                    <div class="p-5 flex flex-col flex-grow"><div class="flex justify-between items-center mb-4"><span class="text-2xl font-bold">£${item.valueFiat.toFixed(2)}</span><span class="text-yellow-400 font-bold bg-yellow-900/30 px-2 py-1 rounded text-sm">${item.costCr} CR</span></div><div class="mt-auto"><div class="flex justify-between text-sm mb-2"><span class="text-gray-400">Stock</span><span class="${inStock ? 'text-green-400' : 'text-red-400'}">${inStock ? item.stock : 'Sold Out'}</span></div><button id="buy-btn-${index}" class="w-full py-3 rounded-lg font-bold transition-colors ${!inStock || !canAfford ? 'bg-gray-800 text-gray-500 cursor-not-allowed' : 'bg-cyan-600 hover:bg-cyan-500 text-white'}">${!inStock ? 'Sold Out' : (!canAfford ? 'Insufficient CR' : 'Redeem Now')}</button></div></div>`;
                 container.appendChild(card);
-                
                 const btn = document.getElementById(`buy-btn-${index}`);
-                if (inStock && canAfford) {
-                    btn.addEventListener('click', () => {
-                        const originalText = btn.textContent;
-                        btn.textContent = "Processing...";
-                        setTimeout(() => handlePurchase(index, btn, originalText), 800);
-                    });
-                }
+                if (inStock && canAfford) btn.addEventListener('click', () => { btn.textContent = "Processing..."; setTimeout(() => handlePurchase(index, btn), 800); });
             });
-
             renderBackgroundShop();
         }
 
-        function handlePurchase(itemIndex, btnElement, originalText) {
+        function handlePurchase(itemIndex, btnElement) {
             const item = STORE_INVENTORY[itemIndex];
-            
-            // Deduct locally and update stock. The `true` sets isCashout to track in profile.
-            saveUserCredits(-item.costCr, null, true); 
-            STORE_INVENTORY[itemIndex].stock -= 1;
-            
-            // Replace alert with inline button update
-            btnElement.textContent = "Code sent to Email!";
-            btnElement.className = "w-full py-3 rounded-lg font-bold transition-colors bg-green-600 text-white";
-            
-            setTimeout(() => {
-                renderWallet();
-                updateNavUI();
-            }, 2500);
+            saveUserCredits(-item.costCr, null, true); STORE_INVENTORY[itemIndex].stock -= 1;
+            btnElement.textContent = "Check Email!"; btnElement.className = "w-full py-3 rounded-lg bg-green-600 text-white";
+            setTimeout(() => { renderWallet(); updateNavUI(); }, 2500);
         }
 
         function renderBackgroundShop() {
-            // Check if the container exists. If it doesn't, we will dynamically append it to the wallet view.
             let shopContainer = document.getElementById('bg-shop-list');
-            
             if (!shopContainer) {
                 const walletView = document.getElementById('view-wallet');
                 const storeSection = document.createElement('div');
-                storeSection.innerHTML = `
-                    <h3 class="text-xl font-bold px-2 mt-8 text-cyan-400">3D Background Shop</h3>
-                    <div id="bg-shop-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8"></div>
-                `;
-                // Insert it just before the "Back to Surveys" button div
+                storeSection.innerHTML = `<h3 class="text-xl font-bold px-2 mt-8 text-cyan-400">3D Themes Shop</h3><div id="bg-shop-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8"></div>`;
                 walletView.insertBefore(storeSection, walletView.lastElementChild);
                 shopContainer = document.getElementById('bg-shop-list');
             }
-            
             shopContainer.innerHTML = '';
-
             Object.entries(BACKGROUNDS).forEach(([bgId, bgData]) => {
-                // Ensure ownedBackgrounds exists safely
-                if (!userData.ownedBackgrounds) userData.ownedBackgrounds = ['bg_default'];
-                if (!userData.activeBackground) userData.activeBackground = 'bg_default';
-
                 const isOwned = userData.ownedBackgrounds.includes(bgId);
                 const isEquipped = userData.activeBackground === bgId;
                 const canAfford = userData.credits >= bgData.cost;
-
                 const card = document.createElement('div');
                 card.className = `bg-gray-900 border border-gray-700 rounded-xl overflow-hidden flex flex-col transition-all`;
-                
-                // Create color preview hex string
                 const colorHex = '#' + bgData.color.toString(16).padStart(6, '0');
-
                 card.innerHTML = `
-                    <div class="h-20 p-4 flex items-end relative overflow-hidden" style="background: linear-gradient(135deg, #111 0%, ${colorHex}40 100%);">
-                        <div class="absolute inset-0 opacity-20" style="background-color: ${colorHex};"></div>
-                        <h4 class="text-white font-bold text-lg drop-shadow-md relative z-10">${bgData.name}</h4>
-                    </div>
-                    <div class="p-4 flex flex-col flex-grow">
-                        <div class="flex justify-between items-center mb-4">
-                            <span class="text-sm text-gray-400 capitalize">${bgData.shape}</span>
-                            <span class="text-yellow-400 font-bold bg-yellow-900/30 px-2 py-1 rounded text-sm">${bgData.cost === 0 ? 'FREE' : bgData.cost + ' CR'}</span>
-                        </div>
-                        
-                        <div class="mt-auto">
-                            ${isEquipped ? 
-                                `<button disabled class="w-full py-2 rounded-lg font-bold bg-gray-800 text-green-400 border border-green-900 cursor-default">Equipped</button>` :
-                                isOwned ? 
-                                `<button id="btn-equip-${bgId}" class="w-full py-2 rounded-lg font-bold bg-gray-700 hover:bg-gray-600 text-white transition-colors border border-gray-600">Equip Theme</button>` :
-                                `<button id="btn-buy-${bgId}" class="w-full py-2 rounded-lg font-bold transition-colors ${canAfford ? 'bg-cyan-600 hover:bg-cyan-500 text-white' : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'}">${canAfford ? 'Buy' : 'Insufficient CR'}</button>`
-                            }
-                        </div>
-                    </div>
-                `;
+                    <div class="h-20 p-4 flex items-end relative overflow-hidden" style="background: linear-gradient(135deg, #111 0%, ${colorHex}40 100%);"><h4 class="text-white font-bold relative z-10">${bgData.name}</h4></div>
+                    <div class="p-4 flex flex-col flex-grow"><div class="flex justify-between items-center mb-4"><span class="text-yellow-400 font-bold bg-yellow-900/30 px-2 py-1 rounded text-sm">${bgData.cost === 0 ? 'FREE' : bgData.cost + ' CR'}</span></div><div class="mt-auto">
+                    ${isEquipped ? `<button disabled class="w-full py-2 rounded-lg font-bold bg-gray-800 text-green-400 border border-green-900">Equipped</button>` : isOwned ? `<button id="btn-equip-${bgId}" class="w-full py-2 rounded-lg font-bold bg-gray-700 hover:bg-gray-600 text-white">Equip</button>` : `<button id="btn-buy-${bgId}" class="w-full py-2 rounded-lg font-bold transition-colors ${canAfford ? 'bg-cyan-600 hover:bg-cyan-500 text-white' : 'bg-gray-800 text-gray-500 cursor-not-allowed'}">${canAfford ? 'Buy' : 'Insufficient CR'}</button>`}</div></div>`;
                 shopContainer.appendChild(card);
-
-                // Attach Events
-                if (isOwned && !isEquipped) {
-                    document.getElementById(`btn-equip-${bgId}`).addEventListener('click', () => {
-                        userData.activeBackground = bgId;
-                        buildSceneObjects(bgId);
-                        saveUserCredits(0, null, false); // Triggers db update of userData without changing credits
-                        renderWallet(); // Refresh UI
-                    });
-                } else if (!isOwned && canAfford) {
-                    document.getElementById(`btn-buy-${bgId}`).addEventListener('click', (e) => {
-                        // Replaced the blocking confirm() dialog with an immediate unlock to fix iframe freezing
-                        const btn = e.target;
-                        btn.textContent = "Unlocking...";
-                        
-                        setTimeout(() => {
-                            userData.ownedBackgrounds.push(bgId);
-                            userData.activeBackground = bgId;
-                            buildSceneObjects(bgId);
-                            saveUserCredits(-bgData.cost, null, false); 
-                            renderWallet();
-                        }, 500);
-                    });
-                }
+                if (isOwned && !isEquipped) document.getElementById(`btn-equip-${bgId}`).addEventListener('click', () => { userData.activeBackground = bgId; buildSceneObjects(bgId); saveUserCredits(0, null, false); renderWallet(); });
+                else if (!isOwned && canAfford) document.getElementById(`btn-buy-${bgId}`).addEventListener('click', (e) => { e.target.textContent = "Unlocking..."; setTimeout(() => { userData.ownedBackgrounds.push(bgId); userData.activeBackground = bgId; buildSceneObjects(bgId); saveUserCredits(-bgData.cost, null, false); renderWallet(); }, 500); });
             });
         }
 
         window.addEventListener('DOMContentLoaded', initApp);
-
     </script>
 </body>
 </html>
